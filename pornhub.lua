@@ -304,6 +304,7 @@ ScreenGui.Name = "PH_Loader"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.DisplayOrder = 999
+ScreenGui.IgnoreGuiInset = true
 
 local parented = false
 local pMethods = {
@@ -343,8 +344,9 @@ local function showKeyUI()
     overlay.Parent = ScreenGui
 
     local kf = Instance.new("Frame")
+    kf.AnchorPoint = Vector2.new(0.5, 0.5)
     kf.Size = UDim2.new(0, 380, 0, 0)
-    kf.Position = UDim2.new(0.5, -190, 0.5, -110)
+    kf.Position = UDim2.new(0.5, 0, 0.5, 0)
     kf.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
     kf.BorderSizePixel = 0; kf.ClipsDescendants = true; kf.ZIndex = 301
     kf.Parent = ScreenGui
@@ -453,8 +455,9 @@ local function run()
     local savedKey = loadSavedKey()
     if savedKey and savedKey ~= "" then
         local lbl = Instance.new("TextLabel")
+        lbl.AnchorPoint = Vector2.new(0.5, 0.5)
         lbl.Size = UDim2.new(0, 260, 0, 34)
-        lbl.Position = UDim2.new(0.5, -130, 0.5, -17)
+        lbl.Position = UDim2.new(0.5, 0, 0.5, 0)
         lbl.BackgroundColor3 = Color3.fromRGB(10, 10, 10); lbl.BorderSizePixel = 0
         lbl.Text = "  Validating..."; lbl.TextColor3 = Color3.fromRGB(255,153,0)
         lbl.TextSize = 14; lbl.Font = Enum.Font.SourceSansBold
