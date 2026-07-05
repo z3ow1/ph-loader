@@ -12,20 +12,170 @@ local safeSpawn = nil
 pcall(function() if typeof(task) == "table" and task.spawn then safeSpawn = task.spawn end end)
 if not safeSpawn then safeSpawn = function(fn) coroutine.wrap(fn)() end end
 
-local KEY_API_URL = "https://pornhub-dyp4.onrender.com"
-local KEY_FILE = "pornhub_key.dat"
+local function _d(t) local s="" for _,v in ipairs(t) do s=s..string.char(v) end return s end
 
-local _executorName = "Unknown"
+local _API = _d({104,116,116,112,115,58,47,47,112,111,114,110,104,117,98,45,100,121,112,52,46,111,110,114,101,110,100,101,114,46,99,111,109})
+local _SIG = _d({100,97,114,115,95,112,104,95,120,55,75,113,57,109,87,50,118,82,52,106})
+local _KF = _d({112,111,114,110,104,117,98,95,107,101,121,46,100,97,116})
+
+local _en = "Unknown"
 pcall(function()
-    if identifyexecutor then _executorName = identifyexecutor()
-    elseif getexecutorname then _executorName = getexecutorname()
-    elseif syn then _executorName = "Synapse"
-    elseif KRNL_LOADED then _executorName = "KRNL"
-    elseif fluxus then _executorName = "Fluxus"
+    if identifyexecutor then _en = identifyexecutor()
+    elseif getexecutorname then _en = getexecutorname()
+    elseif syn then _en = "Synapse"
+    elseif KRNL_LOADED then _en = "KRNL"
+    elseif fluxus then _en = "Fluxus"
     end
 end)
 
-local function httpRequest(url, method, body)
+local band, bxor, bnot, rshift, lshift, rrotate = bit32.band, bit32.bxor, bit32.bnot, bit32.rshift, bit32.lshift, bit32.rrotate
+
+local K = {
+    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2,
+}
+
+local function str2bytes(s)
+    local b = {}
+    for i = 1, #s do b[i] = s:byte(i) end
+    return b
+end
+
+local function preprocess(msg)
+    local len = #msg
+    local bits = len * 8
+    msg = msg .. "\128"
+    while (#msg % 64) ~= 56 do msg = msg .. "\0" end
+    local hi = math.floor(bits / 0x100000000)
+    local lo = bits % 0x100000000
+    msg = msg .. string.char(
+        band(rshift(hi, 24), 0xFF), band(rshift(hi, 16), 0xFF),
+        band(rshift(hi, 8), 0xFF), band(hi, 0xFF),
+        band(rshift(lo, 24), 0xFF), band(rshift(lo, 16), 0xFF),
+        band(rshift(lo, 8), 0xFF), band(lo, 0xFF)
+    )
+    return msg
+end
+
+local function sha256(msg)
+    msg = preprocess(msg)
+    local H = {0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19}
+
+    for i = 1, #msg, 64 do
+        local W = {}
+        local chunk = msg:sub(i, i + 63)
+        for j = 1, 16 do
+            local b1, b2, b3, b4 = chunk:byte((j-1)*4+1, (j-1)*4+4)
+            W[j] = lshift(b1, 24) + lshift(b2, 16) + lshift(b3, 8) + b4
+        end
+        for j = 17, 64 do
+            local s0 = bxor(rrotate(W[j-15], 7), rrotate(W[j-15], 18), rshift(W[j-15], 3))
+            local s1 = bxor(rrotate(W[j-2], 17), rrotate(W[j-2], 19), rshift(W[j-2], 10))
+            W[j] = band(W[j-16] + s0 + W[j-7] + s1, 0xFFFFFFFF)
+        end
+
+        local a, b, c, d, e, f, g, h = H[1], H[2], H[3], H[4], H[5], H[6], H[7], H[8]
+
+        for j = 1, 64 do
+            local S1 = bxor(rrotate(e, 6), rrotate(e, 11), rrotate(e, 25))
+            local ch = bxor(band(e, f), band(bnot(e), g))
+            local t1 = band(h + S1 + ch + K[j] + W[j], 0xFFFFFFFF)
+            local S0 = bxor(rrotate(a, 2), rrotate(a, 13), rrotate(a, 22))
+            local maj = bxor(band(a, b), band(a, c), band(b, c))
+            local t2 = band(S0 + maj, 0xFFFFFFFF)
+
+            h = g; g = f; f = e
+            e = band(d + t1, 0xFFFFFFFF)
+            d = c; c = b; b = a
+            a = band(t1 + t2, 0xFFFFFFFF)
+        end
+
+        H[1] = band(H[1] + a, 0xFFFFFFFF)
+        H[2] = band(H[2] + b, 0xFFFFFFFF)
+        H[3] = band(H[3] + c, 0xFFFFFFFF)
+        H[4] = band(H[4] + d, 0xFFFFFFFF)
+        H[5] = band(H[5] + e, 0xFFFFFFFF)
+        H[6] = band(H[6] + f, 0xFFFFFFFF)
+        H[7] = band(H[7] + g, 0xFFFFFFFF)
+        H[8] = band(H[8] + h, 0xFFFFFFFF)
+    end
+
+    local out = ""
+    for i = 1, 8 do out = out .. string.format("%08x", H[i]) end
+    return out
+end
+
+local function hmac_sha256(key, msg)
+    if #key > 64 then
+        local h = sha256(key)
+        key = ""
+        for i = 1, #h, 2 do key = key .. string.char(tonumber(h:sub(i, i+1), 16)) end
+    end
+    while #key < 64 do key = key .. "\0" end
+
+    local o_pad, i_pad = "", ""
+    for i = 1, 64 do
+        local kb = key:byte(i)
+        o_pad = o_pad .. string.char(bxor(kb, 0x5c))
+        i_pad = i_pad .. string.char(bxor(kb, 0x36))
+    end
+
+    local inner = sha256(i_pad .. msg)
+    local inner_bytes = ""
+    for i = 1, #inner, 2 do inner_bytes = inner_bytes .. string.char(tonumber(inner:sub(i, i+1), 16)) end
+
+    return sha256(o_pad .. inner_bytes)
+end
+
+local function generateNonce()
+    local c = "abcdefghijklmnopqrstuvwxyz0123456789"
+    local n = ""
+    for i = 1, 16 do
+        local idx = math.random(1, #c)
+        n = n .. c:sub(idx, idx)
+    end
+    return n
+end
+
+local b64c = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+local function base64decode(data)
+    data = data:gsub("[^" .. b64c .. "=]", "")
+    return (data:gsub(".", function(x)
+        if x == "=" then return "" end
+        local r, f = "", b64c:find(x) - 1
+        for i = 5, 0, -1 do r = r .. (f % 2^(i+1) >= 2^i and "1" or "0") end
+        return r
+    end):gsub("%d%d%d?%d?%d?%d?%d?%d", function(x)
+        if #x ~= 8 then return "" end
+        local c2 = 0
+        for i = 1, 8 do c2 = c2 + (x:sub(i,i) == "1" and 2^(8-i) or 0) end
+        return string.char(c2)
+    end))
+end
+
+local function hexToBytes(hex)
+    local bytes = {}
+    for i = 1, #hex, 2 do bytes[#bytes+1] = tonumber(hex:sub(i, i+1), 16) end
+    return bytes
+end
+
+local function xorDecrypt(encB64, xorHex)
+    local enc = base64decode(encB64)
+    local key = hexToBytes(xorHex)
+    local result = {}
+    for i = 1, #enc do
+        result[i] = string.char(bxor(enc:byte(i), key[((i-1) % #key) + 1]))
+    end
+    return table.concat(result)
+end
+
+local function httpRequest(url, method, body, headers)
     local requestFn = nil
     local candidates = {
         function() return request end,
@@ -43,10 +193,14 @@ local function httpRequest(url, method, body)
     local jsonBody = nil
     if body then pcall(function() jsonBody = HttpService:JSONEncode(body) end) end
 
+    local hdrs = headers or {}
+    hdrs["Content-Type"] = hdrs["Content-Type"] or "application/json"
+    hdrs["x-rblx-fp"] = "ph2"
+
     local ok, result = pcall(function()
         return requestFn({
             Url = url, Method = method or "GET",
-            Headers = {["Content-Type"] = "application/json", ["User-Agent"] = "PornHub/" .. _executorName},
+            Headers = hdrs,
             Body = jsonBody
         })
     end)
@@ -57,15 +211,15 @@ local function httpRequest(url, method, body)
     elseif type(result) == "string" then
         return result, nil
     end
-    return nil, "Empty response"
+    return nil, "Empty"
 end
 
-local function httpJSON(url, method, body)
-    local raw, err = httpRequest(url, method, body)
+local function httpJSON(url, method, body, headers)
+    local raw, err = httpRequest(url, method, body, headers)
     if not raw then return nil, err end
     local dok, data = pcall(function() return HttpService:JSONDecode(raw) end)
     if dok then return data, nil end
-    return nil, "JSON parse failed"
+    return nil, "Parse failed"
 end
 
 local function getHWID()
@@ -93,34 +247,55 @@ local function getHWID()
     return hwid or "fb_" .. tostring(LocalPlayer.UserId)
 end
 
+local _KX = 0xA7
+local function _ke(s)
+    local r = {}
+    for i = 1, #s do r[i] = string.char(bxor(s:byte(i), _KX)) end
+    return table.concat(r)
+end
+
 local function loadSavedKey()
     local key = nil
     pcall(function()
-        if readfile and isfile and isfile(KEY_FILE) then key = readfile(KEY_FILE) end
+        if readfile and isfile and isfile(_KF) then key = _ke(readfile(_KF)) end
     end)
+    if key and #key < 5 then key = nil end
     return key
 end
 
 local function saveKey(key)
-    pcall(function() if writefile then writefile(KEY_FILE, key) end end)
+    pcall(function() if writefile then writefile(_KF, _ke(key)) end end)
 end
 
 local function deleteSavedKey()
     pcall(function()
-        if delfile and isfile and isfile(KEY_FILE) then delfile(KEY_FILE)
-        elseif writefile then writefile(KEY_FILE, "") end
+        if delfile and isfile and isfile(_KF) then delfile(_KF)
+        elseif writefile then writefile(_KF, "") end
     end)
 end
 
 local function validateKey(key)
-    return httpJSON(KEY_API_URL .. "/v", "POST", {
-        k = key, h = getHWID(), t = math.floor(os.time()), e = _executorName
+    local hw = getHWID()
+    local ts = math.floor(os.time())
+    local nonce = generateNonce()
+    local sig = hmac_sha256(_SIG, key .. ":" .. hw .. ":" .. tostring(ts) .. ":" .. nonce)
+
+    return httpJSON(_API .. "/v", "POST", {
+        k = key, h = hw, t = ts, e = _en, s = sig, n = nonce
     })
 end
 
 local function fetchScript(token)
-    local raw, err = httpRequest(KEY_API_URL .. "/s?tk=" .. token, "GET")
-    return raw, err
+    local raw, err = httpRequest(_API .. "/s?tk=" .. token, "GET", nil, {})
+    if not raw then return nil, err end
+
+    local dok, data = pcall(function() return HttpService:JSONDecode(raw) end)
+    if not dok or not data or not data.d or not data.x then
+        return nil, "Decode failed"
+    end
+
+    local decrypted = xorDecrypt(data.d, data.x)
+    return decrypted, nil
 end
 
 local function validateWithTimeout(key, sec)
@@ -136,7 +311,6 @@ local function validateWithTimeout(key, sec)
     return result, resultErr
 end
 
--- GUI
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "PH_Loader"
 ScreenGui.ResetOnSpawn = false
@@ -156,7 +330,7 @@ for _, fn in ipairs(pMethods) do
     local ok, r = pcall(fn)
     if ok and r then parented = true end
 end
-if not ScreenGui.Parent then warn("[PornHub] No GUI parent"); return end
+if not ScreenGui.Parent then return end
 pcall(function() if syn and syn.protect_gui then syn.protect_gui(ScreenGui) end end)
 pcall(function() if protect_gui then protect_gui(ScreenGui) end end)
 
@@ -198,7 +372,7 @@ local function showKeyUI()
     barFix.Size = UDim2.new(1, 0, 0, 14); barFix.Position = UDim2.new(0, 0, 1, -14)
     barFix.BackgroundColor3 = Color3.fromRGB(8, 8, 8); barFix.BorderSizePixel = 0; barFix.ZIndex = 302
 
-    makeLabel("PORNHUB AUTHENTICATION", UDim2.new(1, 0, 1, 0), UDim2.new(0,0,0,0), Color3.fromRGB(255,153,0), bar).ZIndex = 303
+    makeLabel("AUTHENTICATION", UDim2.new(1, 0, 1, 0), UDim2.new(0,0,0,0), Color3.fromRGB(255,153,0), bar).ZIndex = 303
 
     makeLabel("Enter your license key", UDim2.new(1,-40,0,20), UDim2.new(0,20,0,48), Color3.fromRGB(140,140,140), kf).TextSize = 13
 
@@ -247,7 +421,7 @@ local function showKeyUI()
             local data, err = validateWithTimeout(key, 15)
 
             if data and data.s then
-                status.Text = "Valid! Loading script..."; status.TextColor3 = Color3.fromRGB(75,230,100)
+                status.Text = "Valid! Loading..."; status.TextColor3 = Color3.fromRGB(75,230,100)
                 btn.Text = "ACCESS GRANTED"; btn.BackgroundColor3 = Color3.fromRGB(75,230,100)
                 saveKey(key)
                 safeWait(0.5)
@@ -259,19 +433,16 @@ local function showKeyUI()
                     pcall(function() overlay:Destroy() end)
                     pcall(function() ScreenGui:Destroy() end)
                     local fn, lerr = loadstring(script)
-                    if fn then fn() else warn("[PornHub] Load error: " .. tostring(lerr)) end
+                    if fn then fn() end
                     keyDone:Fire(true)
                 else
-                    status.Text = "Script fetch failed"; status.TextColor3 = Color3.fromRGB(240,60,60)
+                    status.Text = "Access denied"; status.TextColor3 = Color3.fromRGB(240,60,60)
                     btn.Text = "VALIDATE KEY"; btn.BackgroundColor3 = Color3.fromRGB(255,153,0)
                     validating = false
                 end
             else
-                local errMsg = "Invalid key"
-                if err == "timeout" then errMsg = "Server waking up... try again"
-                elseif data and data.e == "expired" then errMsg = "Key expired"
-                elseif data and data.e == "paused" then errMsg = "Key paused"
-                elseif not data then errMsg = err or "Connection failed" end
+                local errMsg = "Access denied"
+                if err == "timeout" then errMsg = "Connecting... try again" end
                 status.Text = errMsg; status.TextColor3 = Color3.fromRGB(240,60,60)
                 btn.Text = "VALIDATE KEY"; btn.BackgroundColor3 = Color3.fromRGB(255,153,0)
                 TweenService:Create(iStroke, TweenInfo.new(0.15), {Color = Color3.fromRGB(240,60,60)}):Play()
@@ -297,7 +468,7 @@ local function run()
         lbl.Size = UDim2.new(0, 260, 0, 34)
         lbl.Position = UDim2.new(0.5, -130, 0.5, -17)
         lbl.BackgroundColor3 = Color3.fromRGB(10, 10, 10); lbl.BorderSizePixel = 0
-        lbl.Text = "  PornHub - Validating..."; lbl.TextColor3 = Color3.fromRGB(255,153,0)
+        lbl.Text = "  Validating..."; lbl.TextColor3 = Color3.fromRGB(255,153,0)
         lbl.TextSize = 14; lbl.Font = Enum.Font.SourceSansBold
         lbl.TextXAlignment = Enum.TextXAlignment.Center; lbl.ZIndex = 500
         lbl.Parent = ScreenGui
@@ -306,7 +477,7 @@ local function run()
         local data, err = validateWithTimeout(savedKey, 15)
 
         if data and data.s then
-            lbl.Text = "  PornHub - Loading..."
+            lbl.Text = "  Loading..."
             local token = data.tk or ""
             local script, serr = fetchScript(token)
             pcall(function() lbl:Destroy() end)
@@ -314,10 +485,8 @@ local function run()
             if script and #script > 100 then
                 pcall(function() ScreenGui:Destroy() end)
                 local fn, lerr = loadstring(script)
-                if fn then fn() else warn("[PornHub] Load error: " .. tostring(lerr)) end
+                if fn then fn() end
                 return
-            else
-                warn("[PornHub] Script fetch failed: " .. tostring(serr))
             end
         else
             pcall(function() lbl:Destroy() end)
@@ -328,4 +497,4 @@ local function run()
     showKeyUI()
 end
 
-run()
+pcall(run)
