@@ -143,36 +143,24 @@ local function generateNonce()
     return n
 end
 
-local b64c = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-local function base64decode(data)
-    data = data:gsub("[^" .. b64c .. "=]", "")
-    return (data:gsub(".", function(x)
-        if x == "=" then return "" end
-        local r, f = "", b64c:find(x) - 1
-        for i = 5, 0, -1 do r = r .. (f % 2^(i+1) >= 2^i and "1" or "0") end
-        return r
-    end):gsub("%d%d%d?%d?%d?%d?%d?%d", function(x)
-        if #x ~= 8 then return "" end
-        local c2 = 0
-        for i = 1, 8 do c2 = c2 + (x:sub(i,i) == "1" and 2^(8-i) or 0) end
-        return string.char(c2)
-    end))
-end
-
-local function hexToBytes(hex)
-    local bytes = {}
-    for i = 1, #hex, 2 do bytes[#bytes+1] = tonumber(hex:sub(i, i+1), 16) end
-    return bytes
-end
-
-local function xorDecrypt(encB64, xorHex)
-    local enc = base64decode(encB64)
-    local key = hexToBytes(xorHex)
-    local result = {}
-    for i = 1, #enc do
-        result[i] = string.char(bxor(enc:byte(i), key[((i-1) % #key) + 1]))
+local function hexDecode(hex)
+    local len = #hex
+    local parts = {}
+    for i = 1, len, 2 do
+        parts[#parts+1] = string.char(tonumber(hex:sub(i, i+1), 16))
     end
-    return table.concat(result)
+    return table.concat(parts)
+end
+
+local function xorDecrypt(encHex, xorHex)
+    local enc = hexDecode(encHex)
+    local key = hexDecode(xorHex)
+    local kLen = #key
+    local parts = {}
+    for i = 1, #enc do
+        parts[i] = string.char(bxor(enc:byte(i), key:byte(((i-1) % kLen) + 1)))
+    end
+    return table.concat(parts)
 end
 
 local function httpRequest(url, method, body, headers)
