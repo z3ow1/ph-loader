@@ -351,6 +351,15 @@ local function showKeyUI()
     kf.BorderSizePixel = 0; kf.ClipsDescendants = true; kf.ZIndex = 301
     kf.Parent = ScreenGui
     Instance.new("UICorner", kf).CornerRadius = UDim.new(0, 12)
+    local kfScale = Instance.new("UIScale", kf)
+    local function updateKfScale()
+        local vp = workspace.CurrentCamera.ViewportSize
+        local sx = (vp.X - 20) / 380
+        local sy = (vp.Y - 20) / 190
+        kfScale.Scale = math.min(1, math.min(sx, sy))
+    end
+    updateKfScale()
+    workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateKfScale)
     local stroke = Instance.new("UIStroke", kf)
     stroke.Color = Color3.fromRGB(255, 153, 0); stroke.Thickness = 2; stroke.Transparency = 1
 
